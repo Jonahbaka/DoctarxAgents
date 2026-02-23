@@ -10,7 +10,7 @@
 //
 //   AGENTS — Autonomous Healthcare Operations Intelligence
 //   Polymathic Agentic Topology powered by Claude 4.6 Opus
-//   11 Named Agents | 60+ Tools | Self-Healing | Multi-Channel
+//   14 Named Agents | 80+ Tools | Self-Healing | Multi-Channel | TokenForge
 //
 // ═══════════════════════════════════════════════════════════════
 
@@ -34,6 +34,9 @@ import { createMessagingTools } from './agents/messaging/index.js';
 import { practitionerTools } from './agents/practitioner/index.js';
 import { paymentTools } from './agents/payment/index.js';
 import { bankingTools } from './agents/banking/index.js';
+import { shoppingTools } from './agents/shopping/index.js';
+import { usPaymentTools } from './agents/us-payment/index.js';
+import { codeOpsTools } from './agents/code-ops/index.js';
 
 // Subsystems
 import { SelfHealingEngine } from './healing/self-healer.js';
@@ -42,6 +45,7 @@ import { ConsciousnessEngine } from './consciousness/index.js';
 import { A2AProtocol } from './protocols/a2a.js';
 import { BoundedAutonomyEngine } from './protocols/bounded-autonomy.js';
 import { AuditTrail } from './protocols/audit-trail.js';
+import { TokenForge } from './subsystems/token-forge/index.js';
 
 // Channels
 import { ChannelManager } from './channels/manager.js';
@@ -87,11 +91,12 @@ async function main(): Promise<void> {
   // Register agent queues in A2A
   ['orchestrator', 'clinical_specialist', 'financial_ops', 'infrastructure_ops',
    'security_ops', 'quantitative', 'trading_ops', 'messaging_ops', 'consciousness',
-   'practitioner_ops', 'payment_ops', 'banking_ops'].forEach(
+   'practitioner_ops', 'payment_ops', 'banking_ops',
+   'shopping_ops', 'us_payment_ops', 'code_ops'].forEach(
     agent => a2a.registerAgent(agent)
   );
 
-  auditTrail.record('system', 'boot', 'doctarx-agents', { version: '3.0.0', model: CONFIG.anthropic.model });
+  auditTrail.record('system', 'boot', 'doctarx-agents', { version: '4.0.0', model: CONFIG.anthropic.model });
 
   // ── Phase 3: Initialize Channels ──
 
@@ -113,12 +118,15 @@ async function main(): Promise<void> {
   const circuitBreakers = new CircuitBreakerRegistry(CONFIG.healing, logger);
   const healingEngine = new SelfHealingEngine(logger, memory, circuitBreakers);
 
-  logger.info('[6/8] Initializing consciousness engine...');
+  logger.info('[6/9] Initializing consciousness engine...');
   const consciousnessEngine = new ConsciousnessEngine(logger);
+
+  logger.info('[7/9] Initializing TokenForge (model routing + cost optimization)...');
+  const tokenForge = new TokenForge(logger);
 
   // ── Phase 5: Register All Tools ──
 
-  logger.info('[7/8] Registering tools across 11 agent domains...');
+  logger.info('[8/9] Registering tools across 14 agent domains...');
 
   // Core agent tools
   orchestrator.registerTools(clinicalTools);
@@ -140,12 +148,17 @@ async function main(): Promise<void> {
   orchestrator.registerTools(paymentTools);
   orchestrator.registerTools(bankingTools);
 
+  // Shopping, US Payments & Code Operations agent tools
+  orchestrator.registerTools(shoppingTools);
+  orchestrator.registerTools(usPaymentTools);
+  orchestrator.registerTools(codeOpsTools);
+
   const state = orchestrator.getState();
-  logger.info(`  ${state.toolCount} tools registered across 11 agent domains`);
+  logger.info(`  ${state.toolCount} tools registered across 14 agent domains`);
 
   // ── Phase 6: Start Gateway + Daemon ──
 
-  logger.info('[8/8] Starting gateway & daemon...');
+  logger.info('[9/9] Starting gateway & daemon...');
   const gateway = new GatewayServer(logger);
 
   const daemon = new DaemonLoop(orchestrator, memory, gateway, logger);
@@ -171,7 +184,7 @@ async function main(): Promise<void> {
   logger.info('═══════════════════════════════════════════════════');
   logger.info('  ALL SYSTEMS OPERATIONAL');
   logger.info('');
-  logger.info('  Agents (11):');
+  logger.info('  Agents (14):');
   logger.info('    Hippocrates (Clinical)       — STANDBY');
   logger.info('    Atlas       (Financial)      — STANDBY');
   logger.info('    Forge       (Infrastructure) — STANDBY');
@@ -183,10 +196,14 @@ async function main(): Promise<void> {
   logger.info('    Asclepius   (Practitioner)   — STANDBY');
   logger.info('    Mercury     (Payments)       — STANDBY');
   logger.info('    Plutus      (Banking)        — STANDBY');
+  logger.info('    Athena      (Shopping)       — STANDBY');
+  logger.info('    Janus       (US Payments)    — STANDBY');
+  logger.info('    Prometheus  (Code Ops)       — STANDBY');
   logger.info('');
   logger.info('  Subsystems:');
   logger.info(`    Self-Healing    — ACTIVE`);
   logger.info(`    Consciousness   — ACTIVE`);
+  logger.info(`    TokenForge      — ${CONFIG.tokenForge.enabled ? 'ACTIVE (model routing + caching)' : 'DISABLED'}`);
   logger.info(`    A2A Protocol    — ACTIVE (${a2a.getRegisteredAgents().length} agents)`);
   logger.info(`    Audit Trail     — ACTIVE (${auditTrail.getCount()} entries)`);
   logger.info(`    Governance      — ACTIVE (${autonomy.getPolicies().length} policies)`);
@@ -212,6 +229,7 @@ async function main(): Promise<void> {
     logger.info(`\n${signal} received — shutting down gracefully...`);
     auditTrail.record('system', 'shutdown', 'doctarx-agents', { signal });
     a2a.destroy();
+    tokenForge.destroy();
     await daemon.stop();
     orchestrator.stop();
     logger.info('All systems offline. Goodbye.');

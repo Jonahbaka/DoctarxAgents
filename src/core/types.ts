@@ -20,7 +20,10 @@ export type AgentRole =
   | 'consciousness'
   | 'practitioner_ops'
   | 'payment_ops'
-  | 'banking_ops';
+  | 'banking_ops'
+  | 'shopping_ops'
+  | 'us_payment_ops'
+  | 'code_ops';
 
 export type AgentStatus = 'idle' | 'running' | 'blocked' | 'failed' | 'terminated';
 
@@ -93,6 +96,24 @@ export type TaskType =
   | 'bank_link'
   | 'bank_data'
   | 'bank_debit'
+  // Shopping & Arbitrage
+  | 'product_search'
+  | 'price_arbitrage'
+  | 'order_place'
+  | 'order_track'
+  | 'deal_watch'
+  // US Payments
+  | 'us_payment_charge'
+  | 'us_payment_subscribe'
+  | 'us_payment_connect'
+  | 'us_payment_ach'
+  | 'us_payment_wallet'
+  // Code Operations
+  | 'code_diagnose'
+  | 'code_fix'
+  | 'code_test'
+  | 'code_deploy'
+  | 'code_review'
   // Protocols
   | 'a2a_communication'
   | 'health_check';
@@ -129,7 +150,8 @@ export interface ToolDefinition {
   category:
     | 'browser' | 'api' | 'database' | 'email' | 'fhir' | 'financial' | 'system'
     | 'security' | 'recon' | 'computation' | 'trading' | 'messaging' | 'consciousness' | 'protocol'
-    | 'practitioner' | 'payment' | 'banking';
+    | 'practitioner' | 'payment' | 'banking'
+    | 'shopping' | 'us_payment' | 'code_ops';
   inputSchema: z.ZodType;
   requiresApproval: boolean;
   riskLevel: 'low' | 'medium' | 'high' | 'critical';
@@ -259,7 +281,25 @@ export type EventType =
   | 'banking:account_linked'
   | 'banking:debit_initiated'
   | 'banking:data_fetched'
-  | 'banking:provider_connected';
+  | 'banking:provider_connected'
+  // Shopping events
+  | 'shopping:search'
+  | 'shopping:arbitrage'
+  | 'shopping:order_placed'
+  | 'shopping:order_tracked'
+  | 'shopping:deal_alert'
+  // US Payment events
+  | 'us_payment:charged'
+  | 'us_payment:subscribed'
+  | 'us_payment:connected'
+  | 'us_payment:ach_sent'
+  | 'us_payment:wallet_updated'
+  // Code ops events
+  | 'code:diagnosed'
+  | 'code:fixed'
+  | 'code:tested'
+  | 'code:deployed'
+  | 'code:reviewed';
 
 export interface SystemEvent {
   id: string;
@@ -496,6 +536,9 @@ export const TaskSchema = z.object({
     'practitioner_lookup', 'practitioner_update',
     'payment_initiate', 'payment_status', 'payment_refund', 'payment_providers',
     'bank_link', 'bank_data', 'bank_debit',
+    'product_search', 'price_arbitrage', 'order_place', 'order_track', 'deal_watch',
+    'us_payment_charge', 'us_payment_subscribe', 'us_payment_connect', 'us_payment_ach', 'us_payment_wallet',
+    'code_diagnose', 'code_fix', 'code_test', 'code_deploy', 'code_review',
     'a2a_communication', 'health_check',
   ]),
   priority: z.enum(['critical', 'high', 'medium', 'low']),

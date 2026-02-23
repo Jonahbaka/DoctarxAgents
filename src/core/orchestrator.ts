@@ -128,6 +128,30 @@ const SUB_AGENT_CONFIGS: Record<string, SubAgentConfig> = {
     tools: ['mono_link_account', 'mono_get_account_data', 'mono_initiate_debit', 'stitch_link_account', 'stitch_get_account_data', 'banking_providers_status'],
     temperature: 0.1,
   },
+  shopping_ops: {
+    role: 'shopping_ops',
+    name: 'Athena',
+    description: 'Agentic shopping & price arbitrage — product search across Google Shopping/Amazon/eBay, price comparison, Stripe payment intents/links, web push payments, order tracking, deal watching',
+    capabilities: ['product_search', 'price_arbitrage', 'stripe_payments', 'payment_links', 'web_push_pay', 'order_tracking', 'deal_watching'],
+    tools: ['product_search', 'price_arbitrage', 'stripe_payment_intent', 'stripe_payment_link', 'web_push_payment', 'order_tracker', 'deal_watcher'],
+    temperature: 0.3,
+  },
+  us_payment_ops: {
+    role: 'us_payment_ops',
+    name: 'Janus',
+    description: 'US payment operations via Stripe — charges, subscriptions, Connect onboarding, ACH transfers, Apple Pay, Google Pay, Payment Request API, wallet balance',
+    capabilities: ['stripe_charge', 'subscriptions', 'connect_onboarding', 'ach_transfers', 'apple_pay', 'google_pay', 'payment_requests', 'wallet_balance'],
+    tools: ['stripe_charge', 'stripe_subscription', 'stripe_connect_onboard', 'ach_transfer', 'apple_pay_session', 'google_pay_token', 'payment_request_api', 'wallet_balance'],
+    temperature: 0.1,
+  },
+  code_ops: {
+    role: 'code_ops',
+    name: 'Prometheus',
+    description: 'Self-evolving code operations — read, write, test, diagnose, fix, review, deploy, and runtime patch the codebase. Self-healing code capability.',
+    capabilities: ['code_read', 'code_write', 'code_test', 'code_diagnose', 'code_fix', 'code_review', 'code_deploy', 'runtime_patch'],
+    tools: ['code_read', 'code_write', 'code_test', 'code_diagnose', 'code_fix', 'code_review', 'code_deploy', 'runtime_patch'],
+    temperature: 0.2,
+  },
 };
 
 // ── Orchestrator ────────────────────────────────────────────
@@ -316,6 +340,24 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
       bank_link: 'banking_ops',
       bank_data: 'banking_ops',
       bank_debit: 'banking_ops',
+      // Shopping & Arbitrage
+      product_search: 'shopping_ops',
+      price_arbitrage: 'shopping_ops',
+      order_place: 'shopping_ops',
+      order_track: 'shopping_ops',
+      deal_watch: 'shopping_ops',
+      // US Payments
+      us_payment_charge: 'us_payment_ops',
+      us_payment_subscribe: 'us_payment_ops',
+      us_payment_connect: 'us_payment_ops',
+      us_payment_ach: 'us_payment_ops',
+      us_payment_wallet: 'us_payment_ops',
+      // Code Operations
+      code_diagnose: 'code_ops',
+      code_fix: 'code_ops',
+      code_test: 'code_ops',
+      code_deploy: 'code_ops',
+      code_review: 'code_ops',
       // Protocols
       a2a_communication: 'orchestrator',
       health_check: 'orchestrator',

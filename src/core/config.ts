@@ -209,6 +209,46 @@ export const CONFIG = {
     clientId: env('STITCH_CLIENT_ID', ''),
     clientSecret: env('STITCH_CLIENT_SECRET', ''),
   },
+
+  // ══════════════════════════════════════════════════════════
+  // SHOPPING, US PAYMENTS, CODE OPS & TOKEN FORGE
+  // ══════════════════════════════════════════════════════════
+
+  // ── Stripe (US Payments — Janus) ──
+  stripe: {
+    secretKey: env('STRIPE_SECRET_KEY', ''),
+    publishableKey: env('STRIPE_PUBLISHABLE_KEY', ''),
+    webhookSecret: env('STRIPE_WEBHOOK_SECRET', ''),
+    connectEnabled: env('STRIPE_CONNECT_ENABLED', 'false') === 'true',
+  },
+
+  // ── Shopping (Athena) ──
+  shopping: {
+    serpApiKey: env('SERP_API_KEY', ''),
+    platformFeePct: parseFloat(env('SHOPPING_PLATFORM_FEE_PCT', '0.005')),
+    maxPriceUsd: parseFloat(env('SHOPPING_MAX_PRICE_USD', '10000')),
+  },
+
+  // ── Code Operations (Prometheus) ──
+  codeOps: {
+    repoPath: env('CODE_OPS_REPO_PATH', process.cwd()),
+    autoFixEnabled: env('CODE_OPS_AUTO_FIX', 'false') === 'true',
+    autoDeployEnabled: env('CODE_OPS_AUTO_DEPLOY', 'false') === 'true',
+    testCommand: env('CODE_OPS_TEST_CMD', 'npx tsc --noEmit'),
+    buildCommand: env('CODE_OPS_BUILD_CMD', 'npm run build'),
+  },
+
+  // ── TokenForge (Cost Optimization) ──
+  tokenForge: {
+    enabled: env('TOKEN_FORGE_ENABLED', 'true') === 'true',
+    haikuModel: env('TOKEN_FORGE_HAIKU_MODEL', 'claude-haiku-4-5-20251001'),
+    sonnetModel: env('TOKEN_FORGE_SONNET_MODEL', 'claude-sonnet-4-6'),
+    opusModel: env('TOKEN_FORGE_OPUS_MODEL', 'claude-opus-4-6'),
+    resultCacheTtlMs: parseInt(env('TOKEN_FORGE_CACHE_TTL_MS', '3600000')),
+    maxCacheEntries: parseInt(env('TOKEN_FORGE_MAX_CACHE', '1000')),
+    complexityThresholdHaiku: parseInt(env('TOKEN_FORGE_HAIKU_THRESHOLD', '3')),
+    complexityThresholdSonnet: parseInt(env('TOKEN_FORGE_SONNET_THRESHOLD', '6')),
+  },
 } as const;
 
 export type Config = typeof CONFIG;
