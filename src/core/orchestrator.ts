@@ -141,7 +141,7 @@ const SUB_AGENT_CONFIGS: Record<string, SubAgentConfig> = {
     name: 'Janus',
     description: 'US payment operations via Stripe — charges, subscriptions, Connect onboarding, ACH transfers, Apple Pay, Google Pay, Payment Request API, wallet balance',
     capabilities: ['stripe_charge', 'subscriptions', 'connect_onboarding', 'ach_transfers', 'apple_pay', 'google_pay', 'payment_requests', 'wallet_balance'],
-    tools: ['stripe_charge', 'stripe_subscription', 'stripe_connect_onboard', 'ach_transfer', 'apple_pay_session', 'google_pay_token', 'payment_request_api', 'wallet_balance'],
+    tools: ['stripe_charge', 'stripe_subscription', 'stripe_connect_onboard', 'ach_transfer', 'apple_pay_session', 'google_pay_token', 'payment_request_api', 'wallet_balance', 'apple_pay_complete_payment', 'apple_pay_subscription', 'apple_pay_express_checkout', 'google_pay_complete_payment'],
     temperature: 0.1,
   },
   code_ops: {
@@ -158,6 +158,14 @@ const SUB_AGENT_CONFIGS: Record<string, SubAgentConfig> = {
     description: 'User payment hub — card/bank management, recurring bill autopay, wallet (P2P transfers, top-up, withdraw), transaction history, uPromptPay (natural language payments), smart split, pay forward',
     capabilities: ['add_card', 'remove_card', 'set_default', 'bill_autopay', 'wallet_topup', 'wallet_transfer', 'wallet_withdraw', 'transaction_history', 'upromptpay', 'smart_split', 'pay_forward'],
     tools: ['add_payment_method', 'list_payment_methods', 'remove_payment_method', 'set_default_payment_method', 'create_bill_schedule', 'list_bill_schedules', 'cancel_bill_schedule', 'bill_pay_now', 'wallet_topup', 'wallet_transfer', 'wallet_withdraw', 'transaction_history', 'upromptpay', 'smart_split', 'pay_forward'],
+    temperature: 0.2,
+  },
+  marketplace_ops: {
+    role: 'marketplace_ops',
+    name: 'Agora',
+    description: 'Agentic Marketplace — register, discover, and invoke external tools at runtime. Extensible plugin system for third-party developers.',
+    capabilities: ['tool_registration', 'tool_discovery', 'tool_invocation', 'marketplace_analytics'],
+    tools: ['marketplace_register_tool', 'marketplace_list_tools', 'marketplace_invoke_tool'],
     temperature: 0.2,
   },
 };
@@ -377,6 +385,12 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
       upromptpay: 'wallet_ops',
       smart_split: 'wallet_ops',
       tx_history: 'wallet_ops',
+      // Apple Pay / Google Pay
+      apple_pay_payment: 'us_payment_ops',
+      google_pay_payment: 'us_payment_ops',
+      express_checkout: 'us_payment_ops',
+      // Marketplace
+      marketplace_invoke: 'marketplace_ops',
       // Protocols
       a2a_communication: 'orchestrator',
       health_check: 'orchestrator',

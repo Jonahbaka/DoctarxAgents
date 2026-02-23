@@ -332,4 +332,8 @@ export class GatewayServer extends EventEmitter {
   getClientCount(): number {
     return this.clients.size;
   }
+
+  getApp(): express.Application {
+    return this.app;
+  }
 }

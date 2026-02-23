@@ -24,7 +24,8 @@ export type AgentRole =
   | 'shopping_ops'
   | 'us_payment_ops'
   | 'code_ops'
-  | 'wallet_ops';
+  | 'wallet_ops'
+  | 'marketplace_ops';
 
 export type AgentStatus = 'idle' | 'running' | 'blocked' | 'failed' | 'terminated';
 
@@ -126,6 +127,12 @@ export type TaskType =
   | 'upromptpay'
   | 'smart_split'
   | 'tx_history'
+  // Apple Pay / Google Pay
+  | 'apple_pay_payment'
+  | 'google_pay_payment'
+  | 'express_checkout'
+  // Marketplace
+  | 'marketplace_invoke'
   // Protocols
   | 'a2a_communication'
   | 'health_check';
@@ -163,7 +170,7 @@ export interface ToolDefinition {
     | 'browser' | 'api' | 'database' | 'email' | 'fhir' | 'financial' | 'system'
     | 'security' | 'recon' | 'computation' | 'trading' | 'messaging' | 'consciousness' | 'protocol'
     | 'practitioner' | 'payment' | 'banking'
-    | 'shopping' | 'us_payment' | 'code_ops' | 'wallet';
+    | 'shopping' | 'us_payment' | 'code_ops' | 'wallet' | 'marketplace';
   inputSchema: z.ZodType;
   requiresApproval: boolean;
   riskLevel: 'low' | 'medium' | 'high' | 'critical';
@@ -322,7 +329,12 @@ export type EventType =
   | 'wallet:bill_paid'
   | 'wallet:upromptpay'
   | 'wallet:split'
-  | 'wallet:pay_forward';
+  | 'wallet:pay_forward'
+  // Admin & Marketplace events
+  | 'admin:query'
+  | 'admin:action'
+  | 'marketplace:registered'
+  | 'marketplace:invoked';
 
 export interface SystemEvent {
   id: string;
@@ -596,6 +608,33 @@ export interface PayForwardRule {
   createdAt: Date;
 }
 
+// ── Marketplace Tool ─────────────────────────────────────────
+
+export interface MarketplaceTool {
+  id: string;
+  name: string;
+  description: string;
+  webhookUrl: string;
+  inputSchema: Record<string, unknown>;
+  registeredBy: string;
+  registeredAt: Date;
+  invocationCount: number;
+  avgLatencyMs: number;
+  status: 'active' | 'disabled';
+}
+
+// ── Admin Dashboard State ───────────────────────────────────
+
+export interface AdminDashboardState {
+  agents: Array<{ role: string; name: string; status: string; taskCount: number; errorCount: number; lastActive: Date | null }>;
+  taskQueue: { pending: number; inProgress: number; completed: number; failed: number };
+  health: { overall: string; components: Array<{ name: string; status: string; latencyMs: number }> };
+  channels: Array<{ name: string; connected: boolean; messageCount: number }>;
+  memory: { totalEntries: number; episodic: number; semantic: number; procedural: number };
+  uptime: number;
+  version: string;
+}
+
 // ── Webhook / Platform Integration ──────────────────────────
 
 export interface WebhookConfig {
@@ -629,6 +668,8 @@ export const TaskSchema = z.object({
     'wallet_topup', 'wallet_transfer', 'wallet_withdraw',
     'payment_method_add', 'payment_method_manage', 'bill_schedule', 'bill_pay',
     'upromptpay', 'smart_split', 'tx_history',
+    'apple_pay_payment', 'google_pay_payment', 'express_checkout',
+    'marketplace_invoke',
     'a2a_communication', 'health_check',
   ]),
   priority: z.enum(['critical', 'high', 'medium', 'low']),

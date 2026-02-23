@@ -561,4 +561,488 @@ export const usPaymentTools: ToolDefinition[] = [
       }
     },
   },
+
+  // ─── 9. Apple Pay Complete Payment ──────────────────────────
+  {
+    name: 'apple_pay_complete_payment',
+    description: 'Process an Apple Pay payment end-to-end. Takes a tokenized payment method, creates a PaymentIntent, confirms it, records the transaction, and returns a receipt. This is the full payment flow — not just session setup.',
+    category: 'us_payment',
+    inputSchema: z.object({
+      paymentMethodId: z.string().min(1).describe('Stripe payment method ID (pm_xxx or tok_xxx from Apple Pay JS'),
+      amountCents: z.number().positive().int().describe('Amount in cents'),
+      currency: z.enum(['usd', 'eur', 'gbp', 'cad', 'aud']).optional().default('usd'),
+      description: z.string().min(1).describe('Payment description'),
+      customerEmail: z.string().email().optional().describe('Customer email for receipt'),
+      customerId: z.string().optional().describe('Existing Stripe customer ID'),
+      receiptEmail: z.string().email().optional().describe('Email for payment receipt'),
+      shipping: z.object({
+        name: z.string(),
+        address: z.object({
+          line1: z.string(),
+          line2: z.string().optional(),
+          city: z.string(),
+          state: z.string(),
+          postal_code: z.string(),
+          country: z.string().length(2),
+        }),
+      }).optional(),
+      statementDescriptor: z.string().max(22).optional(),
+    }),
+    requiresApproval: true,
+    riskLevel: 'high',
+    execute: async (input, ctx) => {
+      const params = z.object({
+        paymentMethodId: z.string().min(1),
+        amountCents: z.number().positive().int(),
+        currency: z.enum(['usd', 'eur', 'gbp', 'cad', 'aud']).optional().default('usd'),
+        description: z.string().min(1),
+        customerEmail: z.string().email().optional(),
+        customerId: z.string().optional(),
+        receiptEmail: z.string().email().optional(),
+        shipping: z.object({
+          name: z.string(),
+          address: z.object({
+            line1: z.string(),
+            line2: z.string().optional(),
+            city: z.string(),
+            state: z.string(),
+            postal_code: z.string(),
+            country: z.string().length(2),
+          }),
+        }).optional(),
+        statementDescriptor: z.string().max(22).optional(),
+      }).parse(input);
+
+      ctx.logger.info(`[Janus] Apple Pay payment: $${(params.amountCents / 100).toFixed(2)} ${params.currency}`);
+
+      if (!CONFIG.stripe.secretKey) {
+        return { success: false, data: null, error: 'Stripe not configured — set STRIPE_SECRET_KEY' };
+      }
+
+      try {
+        // Build PaymentIntent body
+        const body = new URLSearchParams({
+          amount: String(params.amountCents),
+          currency: params.currency,
+          'payment_method': params.paymentMethodId,
+          'payment_method_types[0]': 'card',
+          confirm: 'true',
+          description: params.description,
+        });
+
+        if (params.customerId) body.append('customer', params.customerId);
+        if (params.receiptEmail) body.append('receipt_email', params.receiptEmail);
+        else if (params.customerEmail) body.append('receipt_email', params.customerEmail);
+        if (params.statementDescriptor) body.append('statement_descriptor', params.statementDescriptor);
+
+        if (params.shipping) {
+          body.append('shipping[name]', params.shipping.name);
+          body.append('shipping[address][line1]', params.shipping.address.line1);
+          if (params.shipping.address.line2) body.append('shipping[address][line2]', params.shipping.address.line2);
+          body.append('shipping[address][city]', params.shipping.address.city);
+          body.append('shipping[address][state]', params.shipping.address.state);
+          body.append('shipping[address][postal_code]', params.shipping.address.postal_code);
+          body.append('shipping[address][country]', params.shipping.address.country);
+        }
+
+        body.append('metadata[source]', 'apple_pay');
+        body.append('metadata[agent]', 'janus');
+
+        const data = await stripeRequest('/payment_intents', body);
+
+        if (data.error) {
+          return { success: false, data: null, error: `Apple Pay charge failed: ${JSON.stringify(data.error)}` };
+        }
+
+        // Record transaction
+        const charges = data.charges as Record<string, unknown> | undefined;
+        const chargeList = (charges?.data as Array<Record<string, unknown>>) || [];
+        const charge = chargeList[0];
+        const paymentMethodDetails = charge?.payment_method_details as Record<string, unknown> | undefined;
+        const card = paymentMethodDetails?.card as Record<string, unknown> | undefined;
+
+        await ctx.memory.store({
+          agentId: ctx.agentId,
+          type: 'episodic',
+          namespace: 'transactions',
+          content: JSON.stringify({
+            type: 'apple_pay_payment',
+            paymentIntentId: data.id,
+            amount: params.amountCents,
+            currency: params.currency,
+            status: data.status,
+            last4: card?.last4 || 'unknown',
+            brand: card?.brand || 'unknown',
+            receiptUrl: charge?.receipt_url || null,
+          }),
+          metadata: { paymentIntentId: data.id as string, source: 'apple_pay' },
+          importance: 0.8,
+        });
+
+        return {
+          success: true,
+          data: {
+            paymentIntentId: data.id,
+            status: data.status,
+            amount: `$${(params.amountCents / 100).toFixed(2)} ${params.currency.toUpperCase()}`,
+            last4: card?.last4 || 'unknown',
+            brand: card?.brand || 'unknown',
+            receiptUrl: charge?.receipt_url || null,
+            receiptEmail: params.receiptEmail || params.customerEmail || null,
+            paymentMethod: 'Apple Pay',
+          },
+        };
+      } catch (err) {
+        return { success: false, data: null, error: `Apple Pay payment failed: ${err}` };
+      }
+    },
+  },
+
+  // ─── 10. Apple Pay Subscription ─────────────────────────────
+  {
+    name: 'apple_pay_subscription',
+    description: 'Set up recurring Apple Pay billing. Attaches the Apple Pay payment method and creates a Stripe subscription with optional trial period.',
+    category: 'us_payment',
+    inputSchema: z.object({
+      customerId: z.string().min(1).describe('Stripe customer ID'),
+      priceId: z.string().min(1).describe('Stripe Price ID for the subscription plan'),
+      paymentMethodId: z.string().min(1).describe('Apple Pay payment method ID'),
+      trialDays: z.number().int().min(0).max(365).optional().describe('Free trial period in days'),
+      metadata: z.record(z.string(), z.string()).optional(),
+    }),
+    requiresApproval: true,
+    riskLevel: 'high',
+    execute: async (input, ctx) => {
+      const params = z.object({
+        customerId: z.string().min(1),
+        priceId: z.string().min(1),
+        paymentMethodId: z.string().min(1),
+        trialDays: z.number().int().min(0).max(365).optional(),
+        metadata: z.record(z.string(), z.string()).optional(),
+      }).parse(input);
+
+      ctx.logger.info(`[Janus] Apple Pay subscription for customer ${params.customerId}`);
+
+      if (!CONFIG.stripe.secretKey) {
+        return { success: false, data: null, error: 'Stripe not configured — set STRIPE_SECRET_KEY' };
+      }
+
+      try {
+        // Attach payment method to customer
+        const attachBody = new URLSearchParams({ customer: params.customerId });
+        const attachResult = await stripeRequest(`/payment_methods/${params.paymentMethodId}/attach`, attachBody);
+        if (attachResult.error) {
+          return { success: false, data: null, error: `Failed to attach payment method: ${JSON.stringify(attachResult.error)}` };
+        }
+
+        // Set as default payment method
+        const updateBody = new URLSearchParams({
+          'invoice_settings[default_payment_method]': params.paymentMethodId,
+        });
+        await stripeRequest(`/customers/${params.customerId}`, updateBody);
+
+        // Create subscription
+        const subBody = new URLSearchParams({
+          customer: params.customerId,
+          'items[0][price]': params.priceId,
+          default_payment_method: params.paymentMethodId,
+          'payment_settings[payment_method_types][0]': 'card',
+          'metadata[source]': 'apple_pay',
+          'metadata[agent]': 'janus',
+        });
+
+        if (params.trialDays) {
+          const trialEnd = Math.floor(Date.now() / 1000) + (params.trialDays * 86400);
+          subBody.append('trial_end', String(trialEnd));
+        }
+
+        if (params.metadata) {
+          for (const [k, v] of Object.entries(params.metadata)) {
+            subBody.append(`metadata[${k}]`, v);
+          }
+        }
+
+        const subData = await stripeRequest('/subscriptions', subBody);
+
+        if (subData.error) {
+          return { success: false, data: null, error: `Subscription creation failed: ${JSON.stringify(subData.error)}` };
+        }
+
+        // Record
+        await ctx.memory.store({
+          agentId: ctx.agentId,
+          type: 'procedural',
+          namespace: 'subscriptions',
+          content: JSON.stringify({
+            subscriptionId: subData.id,
+            customerId: params.customerId,
+            priceId: params.priceId,
+            status: subData.status,
+            source: 'apple_pay',
+          }),
+          metadata: { subscriptionId: subData.id as string },
+          importance: 0.8,
+        });
+
+        return {
+          success: true,
+          data: {
+            subscriptionId: subData.id,
+            status: subData.status,
+            currentPeriodEnd: subData.current_period_end,
+            trialEnd: subData.trial_end || null,
+            paymentMethod: 'Apple Pay',
+            message: params.trialDays
+              ? `Apple Pay subscription active with ${params.trialDays}-day free trial`
+              : 'Apple Pay subscription active — billing starts immediately',
+          },
+        };
+      } catch (err) {
+        return { success: false, data: null, error: `Apple Pay subscription failed: ${err}` };
+      }
+    },
+  },
+
+  // ─── 11. Apple Pay Express Checkout ─────────────────────────
+  {
+    name: 'apple_pay_express_checkout',
+    description: 'One-tap express checkout combining product, shipping, and payment in a single API call. Creates customer if needed, processes payment, and returns order confirmation with receipt.',
+    category: 'us_payment',
+    inputSchema: z.object({
+      amountCents: z.number().positive().int(),
+      currency: z.enum(['usd', 'eur', 'gbp', 'cad', 'aud']).optional().default('usd'),
+      productName: z.string().min(1).describe('Product or service name'),
+      customerEmail: z.string().email(),
+      paymentMethodId: z.string().min(1).describe('Apple Pay payment method ID'),
+      shippingAddress: z.object({
+        line1: z.string(),
+        line2: z.string().optional(),
+        city: z.string(),
+        state: z.string(),
+        postal_code: z.string(),
+        country: z.string().length(2),
+      }).optional(),
+      statementDescriptor: z.string().max(22).optional(),
+    }),
+    requiresApproval: true,
+    riskLevel: 'high',
+    execute: async (input, ctx) => {
+      const params = z.object({
+        amountCents: z.number().positive().int(),
+        currency: z.enum(['usd', 'eur', 'gbp', 'cad', 'aud']).optional().default('usd'),
+        productName: z.string().min(1),
+        customerEmail: z.string().email(),
+        paymentMethodId: z.string().min(1),
+        shippingAddress: z.object({
+          line1: z.string(),
+          line2: z.string().optional(),
+          city: z.string(),
+          state: z.string(),
+          postal_code: z.string(),
+          country: z.string().length(2),
+        }).optional(),
+        statementDescriptor: z.string().max(22).optional(),
+      }).parse(input);
+
+      ctx.logger.info(`[Janus] Apple Pay express checkout: ${params.productName} $${(params.amountCents / 100).toFixed(2)}`);
+
+      if (!CONFIG.stripe.secretKey) {
+        return { success: false, data: null, error: 'Stripe not configured — set STRIPE_SECRET_KEY' };
+      }
+
+      try {
+        // Create or find customer
+        const custSearchBody = new URLSearchParams({ email: params.customerEmail, limit: '1' });
+        const custSearch = await stripeRequest('/customers/search', new URLSearchParams({ query: `email:'${params.customerEmail}'` }), 'GET');
+        const existingCustomers = (custSearch.data as Array<Record<string, unknown>>) || [];
+        let customerId: string;
+
+        if (existingCustomers.length > 0) {
+          customerId = existingCustomers[0].id as string;
+        } else {
+          const newCust = await stripeRequest('/customers', new URLSearchParams({
+            email: params.customerEmail,
+            'metadata[source]': 'apple_pay_express',
+          }));
+          customerId = newCust.id as string;
+        }
+
+        // Build PaymentIntent
+        const body = new URLSearchParams({
+          amount: String(params.amountCents),
+          currency: params.currency,
+          customer: customerId,
+          'payment_method': params.paymentMethodId,
+          'payment_method_types[0]': 'card',
+          confirm: 'true',
+          description: `Express Checkout: ${params.productName}`,
+          receipt_email: params.customerEmail,
+          'metadata[source]': 'apple_pay_express',
+          'metadata[product]': params.productName,
+          'metadata[agent]': 'janus',
+        });
+
+        if (params.statementDescriptor) body.append('statement_descriptor', params.statementDescriptor);
+
+        if (params.shippingAddress) {
+          body.append('shipping[name]', params.customerEmail);
+          body.append('shipping[address][line1]', params.shippingAddress.line1);
+          if (params.shippingAddress.line2) body.append('shipping[address][line2]', params.shippingAddress.line2);
+          body.append('shipping[address][city]', params.shippingAddress.city);
+          body.append('shipping[address][state]', params.shippingAddress.state);
+          body.append('shipping[address][postal_code]', params.shippingAddress.postal_code);
+          body.append('shipping[address][country]', params.shippingAddress.country);
+        }
+
+        const data = await stripeRequest('/payment_intents', body);
+
+        if (data.error) {
+          return { success: false, data: null, error: `Express checkout failed: ${JSON.stringify(data.error)}` };
+        }
+
+        const charges = data.charges as Record<string, unknown> | undefined;
+        const chargeList = (charges?.data as Array<Record<string, unknown>>) || [];
+        const charge = chargeList[0];
+        const orderId = `ORD-${Date.now().toString(36).toUpperCase()}`;
+
+        // Record
+        await ctx.memory.store({
+          agentId: ctx.agentId,
+          type: 'episodic',
+          namespace: 'transactions',
+          content: JSON.stringify({
+            type: 'express_checkout',
+            orderId,
+            paymentIntentId: data.id,
+            product: params.productName,
+            amount: params.amountCents,
+            currency: params.currency,
+            customerId,
+            status: data.status,
+          }),
+          metadata: { orderId, paymentIntentId: data.id as string, source: 'apple_pay_express' },
+          importance: 0.9,
+        });
+
+        return {
+          success: true,
+          data: {
+            orderId,
+            paymentIntentId: data.id,
+            paymentStatus: data.status,
+            product: params.productName,
+            amount: `$${(params.amountCents / 100).toFixed(2)} ${params.currency.toUpperCase()}`,
+            receiptUrl: charge?.receipt_url || null,
+            customerId,
+            paymentMethod: 'Apple Pay Express',
+            estimatedDelivery: params.shippingAddress ? '3-7 business days' : 'Digital delivery — instant',
+            message: `Order ${orderId} confirmed via Apple Pay Express Checkout`,
+          },
+        };
+      } catch (err) {
+        return { success: false, data: null, error: `Express checkout failed: ${err}` };
+      }
+    },
+  },
+
+  // ─── 12. Google Pay Complete Payment ────────────────────────
+  {
+    name: 'google_pay_complete_payment',
+    description: 'Process a Google Pay payment end-to-end. Takes a tokenized payment method from Google Pay JS, creates and confirms a Stripe PaymentIntent, records the transaction, and returns a receipt.',
+    category: 'us_payment',
+    inputSchema: z.object({
+      paymentMethodId: z.string().min(1).describe('Stripe payment method ID from Google Pay tokenization'),
+      amountCents: z.number().positive().int(),
+      currency: z.enum(['usd', 'eur', 'gbp', 'cad', 'aud']).optional().default('usd'),
+      description: z.string().min(1),
+      customerEmail: z.string().email().optional(),
+      customerId: z.string().optional(),
+      merchantName: z.string().min(1).describe('Merchant display name'),
+      statementDescriptor: z.string().max(22).optional(),
+    }),
+    requiresApproval: true,
+    riskLevel: 'high',
+    execute: async (input, ctx) => {
+      const params = z.object({
+        paymentMethodId: z.string().min(1),
+        amountCents: z.number().positive().int(),
+        currency: z.enum(['usd', 'eur', 'gbp', 'cad', 'aud']).optional().default('usd'),
+        description: z.string().min(1),
+        customerEmail: z.string().email().optional(),
+        customerId: z.string().optional(),
+        merchantName: z.string().min(1),
+        statementDescriptor: z.string().max(22).optional(),
+      }).parse(input);
+
+      ctx.logger.info(`[Janus] Google Pay payment: $${(params.amountCents / 100).toFixed(2)} for ${params.merchantName}`);
+
+      if (!CONFIG.stripe.secretKey) {
+        return { success: false, data: null, error: 'Stripe not configured — set STRIPE_SECRET_KEY' };
+      }
+
+      try {
+        const body = new URLSearchParams({
+          amount: String(params.amountCents),
+          currency: params.currency,
+          'payment_method': params.paymentMethodId,
+          'payment_method_types[0]': 'card',
+          confirm: 'true',
+          description: params.description,
+          'metadata[source]': 'google_pay',
+          'metadata[merchant]': params.merchantName,
+          'metadata[agent]': 'janus',
+        });
+
+        if (params.customerId) body.append('customer', params.customerId);
+        if (params.customerEmail) body.append('receipt_email', params.customerEmail);
+        if (params.statementDescriptor) body.append('statement_descriptor', params.statementDescriptor);
+
+        const data = await stripeRequest('/payment_intents', body);
+
+        if (data.error) {
+          return { success: false, data: null, error: `Google Pay charge failed: ${JSON.stringify(data.error)}` };
+        }
+
+        const charges = data.charges as Record<string, unknown> | undefined;
+        const chargeList = (charges?.data as Array<Record<string, unknown>>) || [];
+        const charge = chargeList[0];
+        const paymentMethodDetails = charge?.payment_method_details as Record<string, unknown> | undefined;
+        const card = paymentMethodDetails?.card as Record<string, unknown> | undefined;
+
+        // Record transaction
+        await ctx.memory.store({
+          agentId: ctx.agentId,
+          type: 'episodic',
+          namespace: 'transactions',
+          content: JSON.stringify({
+            type: 'google_pay_payment',
+            paymentIntentId: data.id,
+            amount: params.amountCents,
+            currency: params.currency,
+            status: data.status,
+            last4: card?.last4 || 'unknown',
+            brand: card?.brand || 'unknown',
+          }),
+          metadata: { paymentIntentId: data.id as string, source: 'google_pay' },
+          importance: 0.8,
+        });
+
+        return {
+          success: true,
+          data: {
+            paymentIntentId: data.id,
+            status: data.status,
+            amount: `$${(params.amountCents / 100).toFixed(2)} ${params.currency.toUpperCase()}`,
+            last4: card?.last4 || 'unknown',
+            brand: card?.brand || 'unknown',
+            receiptUrl: charge?.receipt_url || null,
+            paymentMethod: 'Google Pay',
+            merchantName: params.merchantName,
+          },
+        };
+      } catch (err) {
+        return { success: false, data: null, error: `Google Pay payment failed: ${err}` };
+      }
+    },
+  },
 ];

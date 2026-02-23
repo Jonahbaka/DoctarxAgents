@@ -10,7 +10,7 @@
 //
 //   AGENTS — Autonomous Healthcare Operations Intelligence
 //   Polymathic Agentic Topology powered by Claude 4.6 Opus
-//   15 Named Agents | 95+ Tools | Self-Healing | Multi-Channel | TokenForge | uPromptPay
+//   16 Named Agents | 100+ Tools | Self-Healing | Multi-Channel | TokenForge | uPromptPay | Marketplace
 //
 // ═══════════════════════════════════════════════════════════════
 
@@ -38,6 +38,7 @@ import { shoppingTools } from './agents/shopping/index.js';
 import { usPaymentTools } from './agents/us-payment/index.js';
 import { codeOpsTools } from './agents/code-ops/index.js';
 import { walletTools } from './agents/wallet/index.js';
+import { createMarketplaceTools } from './agents/marketplace/index.js';
 
 // Subsystems
 import { SelfHealingEngine } from './healing/self-healer.js';
@@ -47,6 +48,8 @@ import { A2AProtocol } from './protocols/a2a.js';
 import { BoundedAutonomyEngine } from './protocols/bounded-autonomy.js';
 import { AuditTrail } from './protocols/audit-trail.js';
 import { TokenForge } from './subsystems/token-forge/index.js';
+import { MarketplaceRegistry } from './marketplace/registry.js';
+import { createAdminRoutes } from './gateway/admin-routes.js';
 
 // Channels
 import { ChannelManager } from './channels/manager.js';
@@ -93,11 +96,11 @@ async function main(): Promise<void> {
   ['orchestrator', 'clinical_specialist', 'financial_ops', 'infrastructure_ops',
    'security_ops', 'quantitative', 'trading_ops', 'messaging_ops', 'consciousness',
    'practitioner_ops', 'payment_ops', 'banking_ops',
-   'shopping_ops', 'us_payment_ops', 'code_ops', 'wallet_ops'].forEach(
+   'shopping_ops', 'us_payment_ops', 'code_ops', 'wallet_ops', 'marketplace_ops'].forEach(
     agent => a2a.registerAgent(agent)
   );
 
-  auditTrail.record('system', 'boot', 'doctarx-agents', { version: '5.0.0', model: CONFIG.anthropic.model });
+  auditTrail.record('system', 'boot', 'doctarx-agents', { version: '6.0.0', model: CONFIG.anthropic.model });
 
   // ── Phase 3: Initialize Channels ──
 
@@ -122,12 +125,15 @@ async function main(): Promise<void> {
   logger.info('[6/9] Initializing consciousness engine...');
   const consciousnessEngine = new ConsciousnessEngine(logger);
 
-  logger.info('[7/9] Initializing TokenForge (model routing + cost optimization)...');
+  logger.info('[7/10] Initializing TokenForge (model routing + cost optimization)...');
   const tokenForge = new TokenForge(logger);
+
+  logger.info('[8/10] Initializing Marketplace registry...');
+  const marketplace = new MarketplaceRegistry(memory.getDb(), logger);
 
   // ── Phase 5: Register All Tools ──
 
-  logger.info('[8/9] Registering tools across 15 agent domains...');
+  logger.info('[9/10] Registering tools across 16 agent domains...');
 
   // Core agent tools
   orchestrator.registerTools(clinicalTools);
@@ -157,13 +163,28 @@ async function main(): Promise<void> {
   // Wallet & uPromptPay agent tools
   orchestrator.registerTools(walletTools);
 
+  // Marketplace agent tools (factory — needs registry)
+  const marketplaceTools = createMarketplaceTools(marketplace);
+  orchestrator.registerTools(marketplaceTools);
+
   const state = orchestrator.getState();
-  logger.info(`  ${state.toolCount} tools registered across 15 agent domains`);
+  logger.info(`  ${state.toolCount} tools registered across 16 agent domains`);
 
   // ── Phase 6: Start Gateway + Daemon ──
 
-  logger.info('[9/9] Starting gateway & daemon...');
+  logger.info('[10/10] Starting gateway & daemon...');
   const gateway = new GatewayServer(logger);
+
+  // Mount admin portal routes
+  const adminRouter = createAdminRoutes({
+    orchestrator: orchestrator as unknown as Parameters<typeof createAdminRoutes>[0]['orchestrator'],
+    memory, graphStore, auditTrail,
+    healingEngine, circuitBreakers,
+    consciousnessEngine: consciousnessEngine as unknown as Parameters<typeof createAdminRoutes>[0]['consciousnessEngine'],
+    channelManager, daemon: {} as never, tokenForge, a2a, autonomy,
+    config: CONFIG, logger,
+  });
+  gateway.getApp().use(adminRouter);
 
   const daemon = new DaemonLoop(orchestrator, memory, gateway, logger);
 
@@ -188,7 +209,7 @@ async function main(): Promise<void> {
   logger.info('═══════════════════════════════════════════════════');
   logger.info('  ALL SYSTEMS OPERATIONAL');
   logger.info('');
-  logger.info('  Agents (15):');
+  logger.info('  Agents (16):');
   logger.info('    Hippocrates (Clinical)       — STANDBY');
   logger.info('    Atlas       (Financial)      — STANDBY');
   logger.info('    Forge       (Infrastructure) — STANDBY');
@@ -204,6 +225,7 @@ async function main(): Promise<void> {
   logger.info('    Janus       (US Payments)    — STANDBY');
   logger.info('    Prometheus  (Code Ops)       — STANDBY');
   logger.info('    Nexus       (uPromptPay)     — STANDBY');
+  logger.info('    Agora       (Marketplace)    — STANDBY');
   logger.info('');
   logger.info('  Subsystems:');
   logger.info(`    Self-Healing    — ACTIVE`);
@@ -213,6 +235,8 @@ async function main(): Promise<void> {
   logger.info(`    Audit Trail     — ACTIVE (${auditTrail.getCount()} entries)`);
   logger.info(`    Governance      — ACTIVE (${autonomy.getPolicies().length} policies)`);
   logger.info(`    Knowledge Graph — ACTIVE`);
+  logger.info(`    Marketplace    — ACTIVE (${marketplace.getStats().total} tools)`);
+  logger.info(`    Admin Portal   — ACTIVE (20 routes)`);
   logger.info('');
   logger.info('  Channels:');
   const channelStatus = channelManager.getStatus();
@@ -223,6 +247,7 @@ async function main(): Promise<void> {
   logger.info(`  Gateway API: http://${CONFIG.gateway.host}:${CONFIG.gateway.port}/api`);
   logger.info(`  WebSocket:   ws://${CONFIG.gateway.host}:${CONFIG.gateway.port}/ws`);
   logger.info(`  Health:      http://${CONFIG.gateway.host}:${CONFIG.gateway.port}/health`);
+  logger.info(`  Admin:       http://${CONFIG.gateway.host}:${CONFIG.gateway.port}/admin/dashboard`);
   logger.info('');
   logger.info('  Memory stats:', memory.getStats());
   logger.info(`  Paper trading: ${CONFIG.trading.paperTrading ? 'ON (safe mode)' : 'OFF (LIVE!)'}`);
