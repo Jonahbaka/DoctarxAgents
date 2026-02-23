@@ -23,7 +23,8 @@ export type AgentRole =
   | 'banking_ops'
   | 'shopping_ops'
   | 'us_payment_ops'
-  | 'code_ops';
+  | 'code_ops'
+  | 'wallet_ops';
 
 export type AgentStatus = 'idle' | 'running' | 'blocked' | 'failed' | 'terminated';
 
@@ -114,6 +115,17 @@ export type TaskType =
   | 'code_test'
   | 'code_deploy'
   | 'code_review'
+  // Wallet & uPromptPay
+  | 'wallet_topup'
+  | 'wallet_transfer'
+  | 'wallet_withdraw'
+  | 'payment_method_add'
+  | 'payment_method_manage'
+  | 'bill_schedule'
+  | 'bill_pay'
+  | 'upromptpay'
+  | 'smart_split'
+  | 'tx_history'
   // Protocols
   | 'a2a_communication'
   | 'health_check';
@@ -151,7 +163,7 @@ export interface ToolDefinition {
     | 'browser' | 'api' | 'database' | 'email' | 'fhir' | 'financial' | 'system'
     | 'security' | 'recon' | 'computation' | 'trading' | 'messaging' | 'consciousness' | 'protocol'
     | 'practitioner' | 'payment' | 'banking'
-    | 'shopping' | 'us_payment' | 'code_ops';
+    | 'shopping' | 'us_payment' | 'code_ops' | 'wallet';
   inputSchema: z.ZodType;
   requiresApproval: boolean;
   riskLevel: 'low' | 'medium' | 'high' | 'critical';
@@ -299,7 +311,18 @@ export type EventType =
   | 'code:fixed'
   | 'code:tested'
   | 'code:deployed'
-  | 'code:reviewed';
+  | 'code:reviewed'
+  // Wallet events
+  | 'wallet:topup'
+  | 'wallet:transfer'
+  | 'wallet:withdraw'
+  | 'wallet:method_added'
+  | 'wallet:method_removed'
+  | 'wallet:bill_scheduled'
+  | 'wallet:bill_paid'
+  | 'wallet:upromptpay'
+  | 'wallet:split'
+  | 'wallet:pay_forward';
 
 export interface SystemEvent {
   id: string;
@@ -509,6 +532,70 @@ export interface BankConnection {
   status: 'active' | 'disconnected' | 'pending';
 }
 
+// ── Stored Payment Method ─────────────────────────────────
+
+export type WalletPaymentProvider = 'stripe' | 'mpesa' | 'mtn_momo' | 'flutterwave' | 'paystack' | 'razorpay' | 'mono' | 'stitch';
+
+export interface StoredPaymentMethod {
+  id: string;
+  userId: string;
+  type: 'card' | 'bank_account' | 'mobile_money' | 'upi' | 'wallet';
+  provider: WalletPaymentProvider;
+  last4: string;
+  brand?: string;
+  expiryMonth?: number;
+  expiryYear?: number;
+  isDefault: boolean;
+  nickname?: string;
+  externalId: string;
+  currency: string;
+  addedAt: Date;
+  lastUsedAt: Date | null;
+}
+
+// ── Bill Schedule ─────────────────────────────────────────
+
+export interface BillSchedule {
+  id: string;
+  userId: string;
+  name: string;
+  amount: number;
+  currency: string;
+  frequency: 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'annual';
+  nextPaymentDate: string;
+  paymentMethodId: string;
+  recipientInfo: Record<string, unknown>;
+  status: 'active' | 'paused' | 'cancelled';
+  createdAt: Date;
+  lastPaidAt: Date | null;
+  totalPaid: number;
+}
+
+// ── Wallet Account ────────────────────────────────────────
+
+export interface WalletAccount {
+  id: string;
+  userId: string;
+  balance: number;
+  currency: string;
+  status: 'active' | 'frozen' | 'closed';
+  createdAt: Date;
+  lastTransactionAt: Date | null;
+}
+
+// ── Pay Forward Rule ──────────────────────────────────────
+
+export interface PayForwardRule {
+  id: string;
+  userId: string;
+  trigger: 'on_deposit' | 'on_date' | 'on_balance_threshold';
+  triggerConfig: Record<string, unknown>;
+  action: { type: 'pay' | 'transfer' | 'save'; amount: number; currency: string; recipientInfo: Record<string, unknown> };
+  status: 'active' | 'paused';
+  executionCount: number;
+  createdAt: Date;
+}
+
 // ── Webhook / Platform Integration ──────────────────────────
 
 export interface WebhookConfig {
@@ -539,6 +626,9 @@ export const TaskSchema = z.object({
     'product_search', 'price_arbitrage', 'order_place', 'order_track', 'deal_watch',
     'us_payment_charge', 'us_payment_subscribe', 'us_payment_connect', 'us_payment_ach', 'us_payment_wallet',
     'code_diagnose', 'code_fix', 'code_test', 'code_deploy', 'code_review',
+    'wallet_topup', 'wallet_transfer', 'wallet_withdraw',
+    'payment_method_add', 'payment_method_manage', 'bill_schedule', 'bill_pay',
+    'upromptpay', 'smart_split', 'tx_history',
     'a2a_communication', 'health_check',
   ]),
   priority: z.enum(['critical', 'high', 'medium', 'low']),

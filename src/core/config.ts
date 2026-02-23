@@ -249,6 +249,15 @@ export const CONFIG = {
     complexityThresholdHaiku: parseInt(env('TOKEN_FORGE_HAIKU_THRESHOLD', '3')),
     complexityThresholdSonnet: parseInt(env('TOKEN_FORGE_SONNET_THRESHOLD', '6')),
   },
+
+  // ── Wallet & uPromptPay (Nexus) ──
+  wallet: {
+    maxBalanceUsd: parseFloat(env('WALLET_MAX_BALANCE_USD', '50000')),
+    maxTransferUsd: parseFloat(env('WALLET_MAX_TRANSFER_USD', '10000')),
+    maxBillAmountUsd: parseFloat(env('WALLET_MAX_BILL_USD', '25000')),
+    p2pEnabled: env('WALLET_P2P_ENABLED', 'true') === 'true',
+    payForwardEnabled: env('WALLET_PAY_FORWARD_ENABLED', 'true') === 'true',
+  },
 } as const;
 
 export type Config = typeof CONFIG;

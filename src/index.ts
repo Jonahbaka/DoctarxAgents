@@ -10,7 +10,7 @@
 //
 //   AGENTS — Autonomous Healthcare Operations Intelligence
 //   Polymathic Agentic Topology powered by Claude 4.6 Opus
-//   14 Named Agents | 80+ Tools | Self-Healing | Multi-Channel | TokenForge
+//   15 Named Agents | 95+ Tools | Self-Healing | Multi-Channel | TokenForge | uPromptPay
 //
 // ═══════════════════════════════════════════════════════════════
 
@@ -37,6 +37,7 @@ import { bankingTools } from './agents/banking/index.js';
 import { shoppingTools } from './agents/shopping/index.js';
 import { usPaymentTools } from './agents/us-payment/index.js';
 import { codeOpsTools } from './agents/code-ops/index.js';
+import { walletTools } from './agents/wallet/index.js';
 
 // Subsystems
 import { SelfHealingEngine } from './healing/self-healer.js';
@@ -92,11 +93,11 @@ async function main(): Promise<void> {
   ['orchestrator', 'clinical_specialist', 'financial_ops', 'infrastructure_ops',
    'security_ops', 'quantitative', 'trading_ops', 'messaging_ops', 'consciousness',
    'practitioner_ops', 'payment_ops', 'banking_ops',
-   'shopping_ops', 'us_payment_ops', 'code_ops'].forEach(
+   'shopping_ops', 'us_payment_ops', 'code_ops', 'wallet_ops'].forEach(
     agent => a2a.registerAgent(agent)
   );
 
-  auditTrail.record('system', 'boot', 'doctarx-agents', { version: '4.0.0', model: CONFIG.anthropic.model });
+  auditTrail.record('system', 'boot', 'doctarx-agents', { version: '5.0.0', model: CONFIG.anthropic.model });
 
   // ── Phase 3: Initialize Channels ──
 
@@ -126,7 +127,7 @@ async function main(): Promise<void> {
 
   // ── Phase 5: Register All Tools ──
 
-  logger.info('[8/9] Registering tools across 14 agent domains...');
+  logger.info('[8/9] Registering tools across 15 agent domains...');
 
   // Core agent tools
   orchestrator.registerTools(clinicalTools);
@@ -153,8 +154,11 @@ async function main(): Promise<void> {
   orchestrator.registerTools(usPaymentTools);
   orchestrator.registerTools(codeOpsTools);
 
+  // Wallet & uPromptPay agent tools
+  orchestrator.registerTools(walletTools);
+
   const state = orchestrator.getState();
-  logger.info(`  ${state.toolCount} tools registered across 14 agent domains`);
+  logger.info(`  ${state.toolCount} tools registered across 15 agent domains`);
 
   // ── Phase 6: Start Gateway + Daemon ──
 
@@ -184,7 +188,7 @@ async function main(): Promise<void> {
   logger.info('═══════════════════════════════════════════════════');
   logger.info('  ALL SYSTEMS OPERATIONAL');
   logger.info('');
-  logger.info('  Agents (14):');
+  logger.info('  Agents (15):');
   logger.info('    Hippocrates (Clinical)       — STANDBY');
   logger.info('    Atlas       (Financial)      — STANDBY');
   logger.info('    Forge       (Infrastructure) — STANDBY');
@@ -199,6 +203,7 @@ async function main(): Promise<void> {
   logger.info('    Athena      (Shopping)       — STANDBY');
   logger.info('    Janus       (US Payments)    — STANDBY');
   logger.info('    Prometheus  (Code Ops)       — STANDBY');
+  logger.info('    Nexus       (uPromptPay)     — STANDBY');
   logger.info('');
   logger.info('  Subsystems:');
   logger.info(`    Self-Healing    — ACTIVE`);

@@ -152,6 +152,14 @@ const SUB_AGENT_CONFIGS: Record<string, SubAgentConfig> = {
     tools: ['code_read', 'code_write', 'code_test', 'code_diagnose', 'code_fix', 'code_review', 'code_deploy', 'runtime_patch'],
     temperature: 0.2,
   },
+  wallet_ops: {
+    role: 'wallet_ops',
+    name: 'Nexus',
+    description: 'User payment hub — card/bank management, recurring bill autopay, wallet (P2P transfers, top-up, withdraw), transaction history, uPromptPay (natural language payments), smart split, pay forward',
+    capabilities: ['add_card', 'remove_card', 'set_default', 'bill_autopay', 'wallet_topup', 'wallet_transfer', 'wallet_withdraw', 'transaction_history', 'upromptpay', 'smart_split', 'pay_forward'],
+    tools: ['add_payment_method', 'list_payment_methods', 'remove_payment_method', 'set_default_payment_method', 'create_bill_schedule', 'list_bill_schedules', 'cancel_bill_schedule', 'bill_pay_now', 'wallet_topup', 'wallet_transfer', 'wallet_withdraw', 'transaction_history', 'upromptpay', 'smart_split', 'pay_forward'],
+    temperature: 0.2,
+  },
 };
 
 // ── Orchestrator ────────────────────────────────────────────
@@ -358,6 +366,17 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
       code_test: 'code_ops',
       code_deploy: 'code_ops',
       code_review: 'code_ops',
+      // Wallet & uPromptPay
+      wallet_topup: 'wallet_ops',
+      wallet_transfer: 'wallet_ops',
+      wallet_withdraw: 'wallet_ops',
+      payment_method_add: 'wallet_ops',
+      payment_method_manage: 'wallet_ops',
+      bill_schedule: 'wallet_ops',
+      bill_pay: 'wallet_ops',
+      upromptpay: 'wallet_ops',
+      smart_split: 'wallet_ops',
+      tx_history: 'wallet_ops',
       // Protocols
       a2a_communication: 'orchestrator',
       health_check: 'orchestrator',
